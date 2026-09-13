@@ -1,0 +1,153 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cd-main
+  cancel-in-progress: false
+
+jobs:
+  build-scan-push:
+    name: Docker build, scan, SBOM, sign, push
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set image reference
+        id: vars
+        run: echo "image=ghcr.io/atlantik4790/04-python-fastapi:${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: ${{ steps.vars.outputs.image }}
+
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: ${{ steps.vars.outputs.image }}
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Generate SBOM (Syft)
+        uses: anchore/sbom-action@v0.17.2
+        with:
+          image: ${{ steps.vars.outputs.image }}
+          artifact-name: sbom-${{ github.event.workflow_run.head_sha }}.spdx.json
+          format: spdx-json
+
+      - name: Push image (SHA tag)
+        id: push
+        run: |
+          docker push ${{ steps.vars.outputs.image }}
+          digest=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ steps.vars.outputs.image }} | cut -d'@' -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Tag and push latest
+        run: |
+          docker tag ${{ steps.vars.outputs.image }} ghcr.io/atlantik4790/04-python-fastapi:latest
+          docker push ghcr.io/atlantik4790/04-python-fastapi:latest
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign --yes ghcr.io/atlantik4790/04-python-fastapi@${{ steps.push.outputs.digest }}
+
+  deploy:
+    name: Deploy to EC2/Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-scan-push
+    steps:
+      - name: Deploy and verify
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            bash ~/Aws/04-python-fastapi/scripts/deploy.sh ${{ needs.build-scan-push.outputs.image }}
+            bash ~/Aws/04-python-fastapi/scripts/health-check.sh
+
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    steps:
+      - name: Determine pipeline status
+        id: status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failure" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Send success email
+        if: steps.status.outputs.status == 'success'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          to: ${{ secrets.NOTIFY_EMAIL_TO }}
+          from: FastAPI DevSecOps Pipeline
+          subject: "✅ Deploy succeeded — ${{ github.event.workflow_run.head_sha }}"
+          body: |
+            Deployment completed successfully.
+
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send failure alert
+        if: steps.status.outputs.status == 'failure'
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USERNAME }}
+          password: ${{ secrets.GMAIL_APP_PASSWORD }}
+          to: ${{ secrets.NOTIFY_EMAIL_TO }}
+          from: FastAPI DevSecOps Pipeline
+          priority: high
+          subject: "🚨 ALERT: Deploy FAILED — ${{ github.event.workflow_run.head_sha }}"
+          body: |
+            The deployment pipeline failed and did NOT complete.
+
+            Commit: ${{ github.event.workflow_run.head_sha }}
+            Failed/attempted job result: ${{ needs.deploy.result }}
+            Check logs immediately: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}

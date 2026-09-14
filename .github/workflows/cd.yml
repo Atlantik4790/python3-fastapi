@@ -50,7 +50,7 @@ jobs:
           tags: ${{ steps.vars.outputs.image }}
 
       - name: Scan image (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: ${{ steps.vars.outputs.image }}
           severity: "CRITICAL,HIGH"

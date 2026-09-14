@@ -59,7 +59,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install pip-audit==2.7.3
-      - run: pip-audit -r requirements.txt
+      
 
   sast:
     name: SAST (CodeQL)

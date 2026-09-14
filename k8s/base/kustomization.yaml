@@ -11,7 +11,6 @@ resources:
   - deployment.yaml
   - service.yaml
   - networkpolicy.yaml
-
 images:
   - name: ghcr.io/atlantik4790/04-python-fastapi
     newTag: REPLACE_WITH_SHA

@@ -34,7 +34,7 @@ spec:
           image: ghcr.io/atlantik4790/04-python-fastapi:REPLACE_WITH_SHA
           imagePullPolicy: Always
           ports:
-            - containerPort: 8000
+            - containerPort: 5000
           envFrom:
             - configMapRef:
                 name: fastapi-config
@@ -57,19 +57,19 @@ spec:
           startupProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 5000
             failureThreshold: 10
             periodSeconds: 3
           readinessProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 5000
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /health
-              port: 8000
+              port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3

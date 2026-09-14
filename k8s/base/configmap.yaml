@@ -4,4 +4,4 @@ metadata:
   name: fastapi-config
   namespace: fastapi
 data:
-  PORT: "8000"
+  PORT: "5000"

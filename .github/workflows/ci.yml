@@ -83,7 +83,7 @@ jobs:
         uses: actions/checkout@v4
         
       - name: Trivy config scan
-        uses: aquasecurity/trivy-action@<full-commit-sha-of-0.35.0>
+        uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: "config"
           scan-ref: "k8s/"   

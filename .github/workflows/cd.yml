@@ -85,19 +85,54 @@ jobs:
         run: cosign sign --yes ghcr.io/atlantik4790/04-python-fastapi@${{ steps.push.outputs.digest }}
 
   deploy:
-    name: Deploy to EC2/Kubernetes
-    runs-on: ubuntu-latest
-    needs: build-scan-push
-    steps:
-      - name: Deploy and verify
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            bash ~/Aws/04-python-fastapi/scripts/deploy.sh ${{ needs.build-scan-push.outputs.image }}
-            bash ~/Aws/04-python-fastapi/scripts/health-check.sh
+   name: Deploy to EC2/Kubernetes
+   runs-on: ubuntu-latest
+   needs: build-scan-push
+
+   steps:
+   - name: Deploy to Kubernetes
+     uses: appleboy/ssh-action@v1.0.3
+     with:
+      host: ${{ secrets.EC2_HOST }}
+      username: ${{ secrets.EC2_USER }}
+      key: ${{ secrets.EC2_SSH_KEY }}
+      port: 22
+      script_stop: true
+      script: |
+        set -e
+
+        IMAGE="${{ needs.build-scan-push.outputs.image }}"
+
+        echo "========================================"
+        echo "Deploying FastAPI"
+        echo "Image: $IMAGE"
+        echo "========================================"
+
+        cd ~/Aws/04-python-fastapi
+
+          echo "Checking Kubernetes cluster..."
+          kubectl cluster-info
+
+          echo "Updating image..."
+          kubectl -n fastapi set image deployment/fastapi-app \
+            fastapi-app="$IMAGE"
+
+          echo "Waiting for rollout..."
+          kubectl -n fastapi rollout status deployment/fastapi-app \
+            --timeout=180s
+
+          echo "Checking pods..."
+          kubectl -n fastapi get pods -o wide
+
+          echo "Checking service..."
+          kubectl -n fastapi get svc fastapi-service
+
+          echo "Checking deployment..."
+          kubectl -n fastapi get deployment fastapi-app
+
+          echo "========================================"
+          echo "Deployment successful"
+          echo "========================================"
 
   notify:
     name: Notification

@@ -104,36 +104,43 @@ jobs:
         IMAGE="${{ needs.build-scan-push.outputs.image }}"
 
         echo "========================================"
-        echo "Deploying FastAPI"
+        echo "Deploying FastAPI to Kubernetes"
         echo "Image: $IMAGE"
         echo "========================================"
 
         cd ~/Aws/04-python-fastapi
 
-          echo "Checking Kubernetes cluster..."
-          kubectl cluster-info
+        echo "Checking Kubernetes cluster..."
+        kubectl cluster-info
 
-          echo "Updating image..."
-          kubectl -n fastapi set image deployment/fastapi-app \
-            fastapi-app="$IMAGE"
+        echo "Applying Kubernetes manifests..."
+        kubectl apply -k k8s/overlays/production
 
-          echo "Waiting for rollout..."
-          kubectl -n fastapi rollout status deployment/fastapi-app \
-            --timeout=180s
+        echo "Updating deployment image..."
+        kubectl -n fastapi set image deployment/fastapi-app \
+          fastapi-app="$IMAGE"
 
-          echo "Checking pods..."
-          kubectl -n fastapi get pods -o wide
+        echo "Waiting for rollout..."
+        kubectl -n fastapi rollout status deployment/fastapi-app \
+          --timeout=180s
 
-          echo "Checking service..."
-          kubectl -n fastapi get svc fastapi-service
+        echo "Checking pods..."
+        kubectl -n fastapi get pods -o wide
 
-          echo "Checking deployment..."
-          kubectl -n fastapi get deployment fastapi-app
+        echo "Checking service..."
+        kubectl -n fastapi get svc fastapi-service
 
-          echo "========================================"
-          echo "Deployment successful"
-          echo "========================================"
+        echo "Checking deployment..."
+        kubectl -n fastapi get deployment fastapi-app
 
+        echo "Verifying deployed image..."
+        kubectl -n fastapi get deployment fastapi-app \
+          -o jsonpath='{.spec.template.spec.containers[0].image}'
+        echo
+
+        echo "========================================"
+        echo "Deployment successful"
+        echo "========================================"
   notify:
     name: Notification
     runs-on: ubuntu-latest

@@ -1,0 +1,29 @@
+alertmanager:
+  enabled: true
+
+  config:
+    global:
+      smtp_smarthost: "smtp.gmail.com:587"
+      smtp_from: "atlantikchaudhary4790@gmail.com"
+      smtp_auth_username: "atlantikchaudhary4790@gmail.com"
+      smtp_auth_password_file: "/etc/alertmanager/secrets/alertmanager-gmail/password"
+      smtp_require_tls: true
+
+    route:
+      receiver: "email-notifications"
+      group_by:
+        - alertname
+        - namespace
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+
+    receivers:
+      - name: "email-notifications"
+        email_configs:
+          - to: "atlantikchaudhary4790gmail.com"
+            send_resolved: true
+
+  alertmanagerSpec:
+    secrets:
+      - alertmanager-gmail

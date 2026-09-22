@@ -101,7 +101,7 @@ jobs:
           script: |
             set -e
 
-            IMAGE="${{ needs.build-scan-push.outputs.image }}"
+            IMAGE="ghcr.io/atlantik4790/04-python-fastapi:5435f6eefac77f8df86e929ece29bec3269d5933"
 
             echo "========================================"
             echo "Deploying FastAPI to Kubernetes"
